@@ -7,26 +7,18 @@ on:
 
 jobs:
   build:
-    # macos-14 是 Apple Silicon，部分账户不支持该配置（会报
-    # "The configuration 'macos-14-arm64-us-default' is not supported"）
-    # 这里用 Intel 的 macos-13，交叉编译 iOS arm64 没有任何问题
-    runs-on: macos-13
+    # macos-13 已于 2025-12-04 退役，macos-14 于 2026-10-01 退役；
+    # 免费可用的标准镜像是 macos-15（arm64）
+    runs-on: macos-15
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: 选择 Xcode
+      - name: 环境信息
         run: |
-          if [ -d /Applications/Xcode_15.4.app ]; then
-            sudo xcode-select -s /Applications/Xcode_15.4.app
-          elif [ -d /Applications/Xcode_15.2.app ]; then
-            sudo xcode-select -s /Applications/Xcode_15.2.app
-          elif [ -d /Applications/Xcode_15.0.1.app ]; then
-            sudo xcode-select -s /Applications/Xcode_15.0.1.app
-          else
-            echo "使用镜像默认 Xcode"
-          fi
+          sw_vers
           xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
 
       - name: 安装 xcodegen
         run: brew install xcodegen
