@@ -1,0 +1,35 @@
+name: LlmWiki
+options:
+  bundleIdPrefix: com.llmwiki
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+
+targets:
+  LlmWiki:
+    type: application
+    platform: iOS
+    sources:
+      - path: LlmWiki
+        excludes:
+          - "Info.plist"
+          - "Resources"
+      - path: LlmWiki/Resources
+        buildPhase: resources
+    settings:
+      base:
+        INFOPLIST_FILE: LlmWiki/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.llmwiki.ipad
+        PRODUCT_NAME: LlmWiki
+        # iPad 专用（2 = iPad, 1 = iPhone）
+        TARGETED_DEVICE_FAMILY: "2"
+        CODE_SIGN_STYLE: Automatic
+        # 首次编译前需要填自己的 Apple Developer Team ID（或用 Xcode 里选 Team）
+        DEVELOPMENT_TEAM: ""
+        ENABLE_USER_SCRIPT_SANDBOXING: NO

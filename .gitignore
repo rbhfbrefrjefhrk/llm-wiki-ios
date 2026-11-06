@@ -1,0 +1,17 @@
+# Xcode
+build/
+DerivedData/
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+*.xcuserstate
+
+# CocoaPods（工作流里会重新 pod install）
+Pods/
+Podfile.lock
+
+# 系统
+.DS_Store
+
+# 说明：LlmWiki/Resources/model/*.onnx 是构建必需的端侧模型（23MB），
+# 需一并提交，否则 CI 编译出的 App 缺少模型会启动即崩。

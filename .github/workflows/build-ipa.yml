@@ -1,0 +1,51 @@
+name: build-ipa
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    # GitHub 提供的 macOS 运行器，按分钟计费（public 仓库免费）
+    runs-on: macos-14
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 选择 Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app
+
+      - name: 安装 xcodegen
+        run: brew install xcodegen
+
+      - name: 生成 Xcode 工程
+        run: xcodegen generate
+
+      - name: 安装 CocoaPods 依赖
+        run: pod install
+
+      - name: 编译（不签名）
+        run: |
+          xcodebuild \
+            -workspace LlmWiki.xcworkspace \
+            -scheme LlmWiki \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: 打包成 ipa
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/LlmWiki.app Payload/
+          zip -r LlmWiki-unsigned.ipa Payload
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: LlmWiki-ipa
+          path: LlmWiki-unsigned.ipa
