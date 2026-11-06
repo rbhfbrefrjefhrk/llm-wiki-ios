@@ -2,11 +2,15 @@ import Foundation
 
 private extension Data {
     mutating func appendInt32(_ v: Int32) {
-        withUnsafeBytes(of: v) { append(contentsOf: $0) }
+        let u = UInt32(bitPattern: v)
+        append(UInt8(u & 0xFF))
+        append(UInt8((u >> 8) & 0xFF))
+        append(UInt8((u >> 16) & 0xFF))
+        append(UInt8((u >> 24) & 0xFF))
     }
 
     mutating func appendFloat(_ v: Float) {
-        withUnsafeBytes(of: v) { append(contentsOf: $0) }
+        appendInt32(Int32(bitPattern: v.bitPattern))
     }
 
     mutating func appendUTF8(_ s: String) {
@@ -16,15 +20,17 @@ private extension Data {
     }
 
     func int32(at offset: inout Int) -> Int32 {
-        let v = self[offset..<(offset + 4)].withUnsafeBytes { $0.load(as: Int32.self) }
+        let b0 = UInt32(self[offset])
+        let b1 = UInt32(self[offset + 1])
+        let b2 = UInt32(self[offset + 2])
+        let b3 = UInt32(self[offset + 3])
+        let u = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
         offset += 4
-        return v
+        return Int32(bitPattern: u)
     }
 
     func float(at offset: inout Int) -> Float {
-        let v = self[offset..<(offset + 4)].withUnsafeBytes { $0.load(as: Float.self) }
-        offset += 4
-        return v
+        Float(bitPattern: UInt32(bitPattern: int32(at: &offset)))
     }
 
     func string(at offset: inout Int) -> String {
