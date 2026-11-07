@@ -12,6 +12,8 @@ struct SyncOutcome {
 enum SyncError: LocalizedError {
     case noToken
     case unauthorized
+    case forbidden
+    case rateLimited
     case http(Int)
     case badResponse
     case decodeFailed(String)
@@ -19,7 +21,9 @@ enum SyncError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .noToken: return "未配置 gitee 私人令牌（仓库为私有时必须）"
-        case .unauthorized: return "gitee 认证失败（401/403），请检查用户名与令牌"
+        case .unauthorized: return "gitee 令牌无效或已过期（401），请在设置里重新生成并勾选 projects 权限"
+        case .forbidden: return "gitee 拒绝访问（403）：令牌权限不足，或请求频率过高被限流；请确认令牌勾选了 projects 权限后稍等片刻重试"
+        case .rateLimited: return "gitee 请求过于频繁（429），已自动降速重试仍然失败，请过几分钟再同步"
         case .http(let c): return "gitee 请求失败（HTTP \(c)）"
         case .badResponse: return "gitee 返回格式异常"
         case .decodeFailed(let p): return "文件解码失败：\(p)"
@@ -65,7 +69,8 @@ final class GiteeSyncManager {
         downloaded.reserveCapacity(pages.count)
 
         var cursor = 0
-        let parallel = 8
+        // gitee 对 API 有频率限制，8 并发很容易触发 403；降到 3 并在批次间留间隔
+        let parallel = 3
         while cursor < pages.count {
             let slice = Array(pages[cursor..<min(cursor + parallel, pages.count)])
             let batch = try await withThrowingTaskGroup(of: (String, String, String).self) { group -> [(String, String, String)] in
@@ -82,6 +87,9 @@ final class GiteeSyncManager {
             for (path, sha, text) in batch { downloaded[path] = (sha, text) }
             cursor += parallel
             progress(min(cursor, pages.count), pages.count)
+            if cursor < pages.count {
+                try? await Task.sleep(nanoseconds: 120_000_000)
+            }
         }
 
         let oldManifest = storage.loadManifest()
@@ -190,16 +198,55 @@ final class GiteeSyncManager {
         return (path, sha, text)
     }
 
+    /// 带退避重试的请求入口：403/429 视为可能被限流，指数退避重试 4 次。
     private func getJSON(_ url: URL) async throws -> [String: Any] {
+        var backoff: UInt64 = 3_000_000_000
+        for attempt in 1...4 {
+            do {
+                return try await getJSONOnce(url)
+            } catch let error as SyncError {
+                switch error {
+                case .forbidden, .rateLimited:
+                    if attempt < 4 {
+                        try? await Task.sleep(nanoseconds: backoff)
+                        backoff *= 2
+                        continue
+                    }
+                    throw error
+                default:
+                    throw error
+                }
+            }
+        }
+        throw SyncError.badResponse
+    }
+
+    private func getJSONOnce(_ url: URL) async throws -> [String: Any] {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.timeoutInterval = 30
+        request.setValue("LlmWiki-iPad/1.0", forHTTPHeaderField: "User-Agent")
 
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw SyncError.badResponse }
-        if http.statusCode == 401 || http.statusCode == 403 { throw SyncError.unauthorized }
-        if http.statusCode == 429 { throw SyncError.http(429) }
-        if http.statusCode >= 400 { throw SyncError.http(http.statusCode) }
+
+        switch http.statusCode {
+        case 200...299:
+            break
+        case 401:
+            throw SyncError.unauthorized
+        case 403:
+            let body = (String(data: data, encoding: .utf8) ?? "").lowercased()
+            if body.contains("rate") || body.contains("limit") || body.contains("频繁") {
+                throw SyncError.rateLimited
+            }
+            throw SyncError.forbidden
+        case 429:
+            throw SyncError.rateLimited
+        default:
+            throw SyncError.http(http.statusCode)
+        }
+
         guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw SyncError.badResponse
         }
